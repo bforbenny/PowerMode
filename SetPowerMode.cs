@@ -1,14 +1,20 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Configuration;
+using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace PowerMode
 {
     /// <summary>
     /// This program allows for setting the Windows "power mode" or "power slider" value from the command line.
     /// </summary>
+    /// <seealso cref="https://docs.microsoft.com/en-us/windows-hardware/customize/desktop/customize-power-slider"/>
     class SetPowerMode
     {
+        private static Dictionary<string, Guid> PowerModes = new Dictionary<string, Guid>(StringComparer.InvariantCultureIgnoreCase);
+
         /// <summary>
         /// Execution starts here.
         /// </summary>
@@ -27,19 +33,12 @@ namespace PowerMode
                     uint result = PowerGetEffectiveOverlayScheme(out Guid currentMode);
                     if (result == 0)
                     {
-                        Console.WriteLine(currentMode);
-                        if (currentMode == PowerMode.BetterBattery)
-                        {
-                            Console.WriteLine("Better battery");
-                        }
-                        else if (currentMode == PowerMode.BetterPerformance)
-                        {
-                            Console.WriteLine("Better performance");
-                        }
-                        else if (currentMode == PowerMode.BestPerformance)
-                        {
-                            Console.WriteLine("Best performance");
-                        }
+                        //Console.WriteLine("Current Mode GUID: {0}", currentMode.ToString());
+                        string Key = PowerModes.FirstOrDefault(x => x.Value == currentMode).Key;
+                        if (Key.Length > 0)
+                            Console.WriteLine($"{Key}");
+                        else
+                            Console.WriteLine("*** Power Mode not configured ***");
                     }
                     else
                     {
@@ -49,7 +48,7 @@ namespace PowerMode
                 else if (args.Length == 1)
                 {
                     // Attempt to set the power mode.
-                    string parameter = args[0].ToLower();
+                    string parameter = args[0];
                     Guid powerMode;
 
                     if (parameter == "/?" || parameter == "-?")
@@ -57,17 +56,9 @@ namespace PowerMode
                         Usage();
                         return 1;
                     }
-                    else if (parameter == "BetterBattery".ToLower())
+                    else if (PowerModes.ContainsKey(parameter))
                     {
-                        powerMode = PowerMode.BetterBattery;
-                    }
-                    else if (parameter == "BetterPerformance".ToLower())
-                    {
-                        powerMode = PowerMode.BetterPerformance;
-                    }
-                    else if (parameter == "BestPerformance".ToLower())
-                    {
-                        powerMode = PowerMode.BestPerformance;
+                        powerMode = PowerModes[parameter];
                     }
                     else
                     {
@@ -86,7 +77,10 @@ namespace PowerMode
 
                     if (result == 0)
                     {
-                        Console.WriteLine("Set power mode to {0}.", powerMode);
+                        if(PowerModes.ContainsKey(parameter))
+                            Console.WriteLine("Set power mode to {0}.", parameter);
+                        else
+                            Console.WriteLine("Set power mode to {0}.", powerMode);
                     }
                     else
                     {
@@ -121,53 +115,47 @@ namespace PowerMode
         {
             Console.WriteLine(
                     "PowerMode (GPLv3); used to set the active power mode on Windows 10, version 1709 or later\n" +
-                    "https://github.com/AaronKelley/PowerMode\n" +
-                    "\n" +
-                    "  PowerMode                    Report the current power mode\n" +
-                    "  PowerMode BetterBattery      Set the system to \"better battery\" mode\n" +
-                    "  PowerMode BetterPerformance  Set the system to \"better performance\" mode\n" +
-                    "  PowerMode BestPerformance    Set the system to \"best performance\" mode\n" +
-                    "  PowerMode <GUID>             Set the system to the mode identified by the GUID"
+                    "https://github.com/AaronKelley/PowerMode\n"
                 );
-        }
-
-        private static void ReadConfig()
-        {
-            if (ConfigurationManager.AppSettings["BetterBatteryGuid"] != null)
+            Console.WriteLine("  PowerMode {0,-20} - Report the current power mode", "");
+            foreach(KeyValuePair<string, Guid> entry in PowerModes)
             {
-                PowerMode.BetterBattery = new Guid(ConfigurationManager.AppSettings["BetterBatteryGuid"]);
+                string humanReadable = AddSpacesToSentence(entry.Key);
+                Console.WriteLine("  PowerMode {0,-20} - Set the system to \"{1}\" mode", entry.Key, humanReadable);
             }
-            if (ConfigurationManager.AppSettings["BetterPerformanceGuid"] != null)
-            {
-                PowerMode.BetterPerformance = new Guid(ConfigurationManager.AppSettings["BetterPerformanceGuid"]);
-            }
-            if (ConfigurationManager.AppSettings["BestPerformanceGuid"] != null)
-            {
-                PowerMode.BestPerformance = new Guid(ConfigurationManager.AppSettings["BestPerformanceGuid"]);
-            }
+            
+            Console.WriteLine("  PowerMode {0,-20} - Set the system to the mode identified by the GUID", "<GUID>");
         }
 
         /// <summary>
-        /// Contains GUID constants for the different power modes.
+        /// Add space to a sentence before capital letters
         /// </summary>
-        /// <seealso cref="https://docs.microsoft.com/en-us/windows-hardware/customize/desktop/customize-power-slider"/>
-        private static class PowerMode
+        /// <param name="text">AddSpacesBeforeCapitalLETTERS</param>
+        /// <returns>Add Spaces Before Capital Letters</returns>
+        private static string AddSpacesToSentence(string text)
         {
-            /// <summary>
-            /// Better Battery mode.
-            /// </summary>
-            public static Guid BetterBattery = new Guid("961cc777-2547-4f9d-8174-7d86181b8a7a");
-
-            /// <summary>
-            /// Better Performance mode.
-            /// </summary>
-            public static Guid BetterPerformance = new Guid("3af9B8d9-7c97-431d-ad78-34a8bfea439f");
-
-            /// <summary>
-            /// Best Performance mode.
-            /// </summary>
-            public static Guid BestPerformance = new Guid("ded574b5-45a0-4f42-8737-46345c09c238");
+            if (string.IsNullOrWhiteSpace(text))
+                return "";
+            StringBuilder newText = new StringBuilder(text.Length * 2);
+            newText.Append(text[0]);
+            for (int i = 1; i < text.Length; i++)
+            {
+                if (char.IsUpper(text[i]) && text[i - 1] != ' ')
+                    newText.Append(' ');
+                newText.Append(text[i]);
+            }
+            return newText.ToString();
         }
+
+        /// <summary>
+        /// Read `App.config` and build dictionary
+        /// </summary>
+        private static void ReadConfig()
+        {
+            foreach (string key in ConfigurationManager.AppSettings)
+                PowerModes.Add(key, new Guid(ConfigurationManager.AppSettings[key]));
+        }
+
 
         /// <summary>
         /// Retrieves the active overlay power scheme and returns a GUID that identifies the scheme.
